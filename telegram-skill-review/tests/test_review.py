@@ -192,6 +192,11 @@ def test_delivery_creates_one_topic_and_keeps_all_skill_parts(tmp_path):
     assert "dgme" in bot.calls[0][1]["name"]
     assert "**Profile:** `dgme`" in rich_calls[0][1]["rich_message"]["markdown"]
     assert store.get_pending("abcd1234")["profile"] == "dgme"
+    callbacks = [
+        button["callback_data"]
+        for button in rich_calls[-1][1]["reply_markup"]["inline_keyboard"][0]
+    ]
+    assert callbacks == ["skillreview:a:dgme:abcd1234", "skillreview:r:dgme:abcd1234"]
 
 
 def test_delivery_leaves_foreground_records_available_for_manual_review(tmp_path):
@@ -234,7 +239,7 @@ def test_approve_callback_applies_without_llm_and_preserves_telegram_messages(tm
         chat_id="17",
         apply_pending=lambda payload: applied.append(payload) or {"success": True},
     )
-    query = FakeQuery("skillreview:a:abcd1234")
+    query = FakeQuery("skillreview:a:default:abcd1234")
 
     asyncio.run(service.handle_callback(query))
 
@@ -273,7 +278,7 @@ def test_approve_is_finalized_before_telegram_status_failure(tmp_path):
     )
 
     try:
-        asyncio.run(service.handle_callback(FakeQuery("skillreview:a:abcd1234")))
+        asyncio.run(service.handle_callback(FakeQuery("skillreview:a:default:abcd1234")))
     except RuntimeError:
         pass
 
@@ -297,7 +302,7 @@ def test_callback_uses_the_actual_telegram_chat_type(tmp_path):
     service = plugin.TelegramSkillReviewService(
         bot=FakeBot(), adapter=adapter, store=plugin.ReviewStore(tmp_path), chat_id="17"
     )
-    query = FakeQuery("skillreview:r:abcd1234")
+    query = FakeQuery("skillreview:r:default:abcd1234")
     query.message.chat.type = "supergroup"
 
     asyncio.run(service.handle_callback(query))
@@ -324,7 +329,7 @@ def test_reject_callback_removes_pending_and_reports_status(tmp_path):
         store=plugin.ReviewStore(tmp_path),
         chat_id="17",
     )
-    query = FakeQuery("skillreview:r:abcd1234")
+    query = FakeQuery("skillreview:r:default:abcd1234")
 
     asyncio.run(service.handle_callback(query))
 
@@ -332,6 +337,21 @@ def test_reject_callback_removes_pending_and_reports_status(tmp_path):
     assert query.answers[0] == "Rejecting proposal…"
     status_calls = [call for call in bot.calls if call[0] == "sendRichMessage"]
     assert "Rejected" in status_calls[-1][1]["rich_message"]["markdown"]
+
+
+def test_callback_refuses_a_different_source_profile(tmp_path):
+    service = plugin.TelegramSkillReviewService(
+        bot=FakeBot(),
+        adapter=FakeAdapter(),
+        store=plugin.ReviewStore(tmp_path),
+        chat_id="17",
+        profile_name="finago-developer",
+    )
+    query = FakeQuery("skillreview:a:dgme:abcd1234")
+
+    asyncio.run(service.handle_callback(query))
+
+    assert query.answers == []
 
 
 def test_review_ledger_is_private(tmp_path):

@@ -109,7 +109,7 @@ uv run --with pytest --python 3.12 pytest telegram-skill-review/tests/test_revie
 ## Security properties
 
 - Telegram button callers pass the Hermes Telegram authorization check.
-- Callback data contains a bounded pending ID.
+- Callback data contains the source profile and a bounded pending ID, so one shared Telegram bot can route decisions to the correct profile plugin instance.
 - Chat and topic identifiers must match the stored proposal delivery record.
 - Decisions use a filesystem lock.
 - Approval replays the exact stored payload.

@@ -402,8 +402,14 @@ class TelegramSkillReviewService:
             )
             keyboard = {
                 "inline_keyboard": [[
-                    {"text": "Approve", "callback_data": f"{CALLBACK_PREFIX}:a:{pending_id}"},
-                    {"text": "Reject", "callback_data": f"{CALLBACK_PREFIX}:r:{pending_id}"},
+                    {
+                        "text": "Approve",
+                        "callback_data": f"{CALLBACK_PREFIX}:a:{self.profile_name}:{pending_id}",
+                    },
+                    {
+                        "text": "Reject",
+                        "callback_data": f"{CALLBACK_PREFIX}:r:{self.profile_name}:{pending_id}",
+                    },
                 ]]
             }
             control_id = await self._send_rich(control_markdown, thread_id=thread_id, reply_markup=keyboard)
@@ -422,10 +428,15 @@ class TelegramSkillReviewService:
             await asyncio.sleep(self.scan_interval_seconds)
 
     async def handle_callback(self, query: Any) -> None:
-        match = re.fullmatch(rf"{CALLBACK_PREFIX}:([ar]):([a-zA-Z0-9_-]{{1,64}})", str(query.data or ""))
+        match = re.fullmatch(
+            rf"{CALLBACK_PREFIX}:([ar]):([a-zA-Z0-9_-]{{1,64}}):([a-zA-Z0-9_-]{{1,64}})",
+            str(query.data or ""),
+        )
         if match is None:
             return
-        choice, pending_id = match.groups()
+        choice, callback_profile, pending_id = match.groups()
+        if callback_profile != self.profile_name:
+            return
         message = getattr(query, "message", None)
         chat_id = getattr(message, "chat_id", None)
         thread_id = getattr(message, "message_thread_id", None)
@@ -528,7 +539,13 @@ def register(ctx: Any) -> None:
                 await service.handle_callback(update.callback_query)
 
         application.add_handler(
-            CallbackQueryHandler(callback, pattern=rf"^{CALLBACK_PREFIX}:[ar]:[a-zA-Z0-9_-]{{1,64}}$")
+            CallbackQueryHandler(
+                callback,
+                pattern=(
+                    rf"^{CALLBACK_PREFIX}:[ar]:{re.escape(ctx.profile_name)}:"
+                    r"[a-zA-Z0-9_-]{1,64}$"
+                ),
+            )
         )
         ctx.spawn_task(service.run_scanner(), name="telegram-skill-review-scanner")
 
