@@ -509,12 +509,33 @@ def _resolve_chat_id(ctx: Any) -> str:
     return configured or str(os.getenv("TELEGRAM_HOME_CHANNEL", "")).strip()
 
 
+def source_profile_names(ctx: Any) -> list[str]:
+    configured = ctx.get_config("source_profiles", default=[])
+    values = configured if isinstance(configured, list) and configured else [ctx.profile_name]
+    names: list[str] = []
+    for value in values:
+        name = str(value or "").strip()
+        if re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", name) and name not in names:
+            names.append(name)
+    return names or [ctx.profile_name]
+
+
+def source_profile_home(plugin_home: Path, plugin_profile: str, source_profile: str) -> Path:
+    if source_profile == plugin_profile:
+        return plugin_home
+    if plugin_profile == "default":
+        return plugin_home / "profiles" / source_profile
+    if source_profile == "default":
+        return plugin_home.parent.parent
+    return plugin_home.parent / source_profile
+
+
 def register(ctx: Any) -> None:
     from hermes_constants import get_hermes_home
 
     home = get_hermes_home()
-    store = ReviewStore(home)
     chat_id = _resolve_chat_id(ctx)
+    source_profiles = source_profile_names(ctx)
     if not chat_id:
         logger.warning("telegram-skill-review is enabled without chat_id or TELEGRAM_HOME_CHANNEL")
 
@@ -523,30 +544,44 @@ def register(ctx: Any) -> None:
 
         if not chat_id:
             return
-        service = TelegramSkillReviewService(
-            bot=application.bot,
-            adapter=adapter,
-            store=store,
-            chat_id=chat_id,
-            max_message_chars=int(ctx.get_config("max_message_chars", DEFAULT_MAX_MESSAGE_CHARS)),
-            scan_interval_seconds=float(ctx.get_config("scan_interval_seconds", DEFAULT_SCAN_INTERVAL_SECONDS)),
-            include_foreground=bool(ctx.get_config("include_foreground", False)),
-            profile_name=ctx.profile_name,
-        )
+        services: dict[str, TelegramSkillReviewService] = {}
+        for profile_name in source_profiles:
+            source_home = source_profile_home(home, ctx.profile_name, profile_name)
+            services[profile_name] = TelegramSkillReviewService(
+                bot=application.bot,
+                adapter=adapter,
+                store=ReviewStore(source_home),
+                chat_id=chat_id,
+                max_message_chars=int(ctx.get_config("max_message_chars", DEFAULT_MAX_MESSAGE_CHARS)),
+                scan_interval_seconds=float(ctx.get_config("scan_interval_seconds", DEFAULT_SCAN_INTERVAL_SECONDS)),
+                include_foreground=bool(ctx.get_config("include_foreground", False)),
+                profile_name=profile_name,
+            )
 
         async def callback(update: Any, context: Any) -> None:
-            if update.callback_query is not None:
-                await service.handle_callback(update.callback_query)
+            query = update.callback_query
+            if query is None:
+                return
+            match = re.fullmatch(
+                rf"{CALLBACK_PREFIX}:[ar]:([a-zA-Z0-9_-]{{1,64}}):[a-zA-Z0-9_-]{{1,64}}",
+                str(query.data or ""),
+            )
+            if match and match.group(1) in services:
+                await services[match.group(1)].handle_callback(query)
 
         application.add_handler(
             CallbackQueryHandler(
                 callback,
                 pattern=(
-                    rf"^{CALLBACK_PREFIX}:[ar]:{re.escape(ctx.profile_name)}:"
+                    rf"^{CALLBACK_PREFIX}:[ar]:(?:{'|'.join(map(re.escape, source_profiles))}):"
                     r"[a-zA-Z0-9_-]{1,64}$"
                 ),
             )
         )
-        ctx.spawn_task(service.run_scanner(), name="telegram-skill-review-scanner")
+        for profile_name, service in services.items():
+            ctx.spawn_task(
+                service.run_scanner(),
+                name=f"telegram-skill-review-scanner:{profile_name}",
+            )
 
     ctx.register_platform_handler("telegram", wire)

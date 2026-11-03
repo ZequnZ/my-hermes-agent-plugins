@@ -354,6 +354,42 @@ def test_callback_refuses_a_different_source_profile(tmp_path):
     assert query.answers == []
 
 
+def test_source_profile_names_default_to_plugin_profile():
+    class Context:
+        profile_name = "dgme"
+
+        @staticmethod
+        def get_config(key, default=None):
+            return default
+
+    assert plugin.source_profile_names(Context()) == ["dgme"]
+
+
+def test_source_profile_names_accept_multiple_profiles():
+    class Context:
+        profile_name = "dgme"
+
+        @staticmethod
+        def get_config(key, default=None):
+            return ["dgme", "spicyme", "dgme"] if key == "source_profiles" else default
+
+    assert plugin.source_profile_names(Context()) == ["dgme", "spicyme"]
+
+
+def test_source_profile_home_resolves_from_default_home(tmp_path):
+    default_home = tmp_path / ".hermes"
+
+    assert plugin.source_profile_home(default_home, "default", "finago-developer") == (
+        default_home / "profiles" / "finago-developer"
+    )
+
+
+def test_source_profile_home_resolves_named_profile_sibling(tmp_path):
+    dgme_home = tmp_path / ".hermes" / "profiles" / "dgme"
+
+    assert plugin.source_profile_home(dgme_home, "dgme", "spicyme") == dgme_home.parent / "spicyme"
+
+
 def test_review_ledger_is_private(tmp_path):
     store = plugin.ReviewStore(tmp_path)
     record = pending_record()

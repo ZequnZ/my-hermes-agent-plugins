@@ -13,6 +13,11 @@ config_schema:
     default: ""
     label: Telegram chat ID
     description: Private Telegram chat with Threaded Mode enabled. Falls back to TELEGRAM_HOME_CHANNEL.
+  source_profiles:
+    type: list
+    default: []
+    label: Source profiles
+    description: Profiles whose pending skill writes this bot reviews. Empty means the plugin's own profile.
   include_foreground:
     type: bool
     default: false

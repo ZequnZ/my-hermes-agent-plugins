@@ -45,6 +45,7 @@ plugins:
     telegram-skill-review:
       settings:
         chat_id: "617432850"
+        source_profiles: [dgme, spicyme]
         include_foreground: false
 ```
 
@@ -90,6 +91,7 @@ The pending JSON record stores delivery progress. The scanner resumes after a ga
 | Setting | Default | Meaning |
 |---|---:|---|
 | `chat_id` | empty | Target private Telegram chat; falls back to `TELEGRAM_HOME_CHANNEL` |
+| `source_profiles` | `[]` | Profiles reviewed through this bot; empty selects the plugin's own profile |
 | `include_foreground` | `false` | Include foreground skill operations |
 | `max_message_chars` | `30000` | Character budget for each Rich Message |
 | `scan_interval_seconds` | `2` | Pending-directory scan interval |
