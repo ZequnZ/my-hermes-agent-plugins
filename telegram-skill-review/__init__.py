@@ -56,15 +56,31 @@ def render_proposal_messages(record: dict[str, Any], max_chars: int = DEFAULT_MA
         content = _render_batch_payload(payload)
     pending_id = str(record.get("id") or "")
     name = str(record.get("payload", {}).get("name") or "unnamed-skill")
-    prefix_template = "# Skill proposal: `{name}`\n\n**Pending ID:** `{pending_id}`  \n**Part {part}/{total}**\n\n"
+    profile = str(record.get("profile") or "unknown")
+    prefix_template = (
+        "# Skill proposal: `{name}`\n\n"
+        "**Profile:** `{profile}`  \n"
+        "**Pending ID:** `{pending_id}`  \n"
+        "**Part {part}/{total}**\n\n"
+    )
 
-    minimum_prefix = len(prefix_template.format(name=name, pending_id=pending_id, part=1, total=1))
+    minimum_prefix = len(
+        prefix_template.format(name=name, profile=profile, pending_id=pending_id, part=1, total=1)
+    )
     if max_chars <= minimum_prefix:
         raise ValueError(f"max_message_chars must be greater than the {minimum_prefix}-character proposal header")
 
     total = 1
     while True:
-        prefix_budget = len(prefix_template.format(name=name, pending_id=pending_id, part=total, total=total))
+        prefix_budget = len(
+            prefix_template.format(
+                name=name,
+                profile=profile,
+                pending_id=pending_id,
+                part=total,
+                total=total,
+            )
+        )
         chunks = split_markdown(content, max_chars=max(1, max_chars - prefix_budget))
         if len(chunks) == total:
             break
@@ -75,6 +91,7 @@ def render_proposal_messages(record: dict[str, Any], max_chars: int = DEFAULT_MA
             source=chunk,
             markdown=prefix_template.format(
                 name=name,
+                profile=profile,
                 pending_id=pending_id,
                 part=index,
                 total=total,
@@ -301,6 +318,7 @@ class TelegramSkillReviewService:
         scan_interval_seconds: float = DEFAULT_SCAN_INTERVAL_SECONDS,
         apply_pending: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
         include_foreground: bool = False,
+        profile_name: str = "default",
     ):
         self.bot = bot
         self.adapter = adapter
@@ -310,6 +328,7 @@ class TelegramSkillReviewService:
         self.scan_interval_seconds = float(scan_interval_seconds)
         self.apply_pending = apply_pending or self._apply_pending
         self.include_foreground = bool(include_foreground)
+        self.profile_name = str(profile_name or "default")
 
     @staticmethod
     def _apply_pending(payload: dict[str, Any]) -> dict[str, Any]:
@@ -353,6 +372,11 @@ class TelegramSkillReviewService:
         if record is None:
             return
         try:
+            if record.get("profile") != self.profile_name:
+                record = self.store._update(
+                    pending_id,
+                    lambda current: current.update(profile=self.profile_name),
+                ) or record
             review = record.get("review") or {}
             existing_thread_id = review.get("thread_id")
             thread_id = existing_thread_id
@@ -360,7 +384,7 @@ class TelegramSkillReviewService:
             if not thread_id:
                 topic = await self.bot.create_forum_topic(
                     chat_id=int(self.chat_id),
-                    name=f"Skill · {name} · {pending_id}"[:128],
+                    name=f"Skill · {self.profile_name} · {name} · {pending_id}"[:128],
                 )
                 thread_id = str(topic.message_thread_id)
                 self.store.record_topic(pending_id, chat_id=self.chat_id, thread_id=thread_id)
@@ -496,6 +520,7 @@ def register(ctx: Any) -> None:
             max_message_chars=int(ctx.get_config("max_message_chars", DEFAULT_MAX_MESSAGE_CHARS)),
             scan_interval_seconds=float(ctx.get_config("scan_interval_seconds", DEFAULT_SCAN_INTERVAL_SECONDS)),
             include_foreground=bool(ctx.get_config("include_foreground", False)),
+            profile_name=ctx.profile_name,
         )
 
         async def callback(update: Any, context: Any) -> None:

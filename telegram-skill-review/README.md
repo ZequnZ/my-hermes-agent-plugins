@@ -7,11 +7,12 @@
 1. Hermes stages a skill operation under `<HERMES_HOME>/pending/skills/` when `skills.write_approval` is enabled.
 2. The plugin scans the durable pending directory without blocking the originating conversation.
 3. Every autonomous proposal receives a new Telegram topic.
-4. The complete proposal is sent through `sendRichMessage`. Long content is divided among messages in the same topic.
-5. **Approve** calls Hermes `apply_skill_pending()` directly.
-6. **Reject** removes the pending proposal directly.
-7. The content messages remain in Telegram after either decision.
-8. The plugin removes the buttons, posts the final status, renames the topic, and writes a local review ledger.
+4. Each content message identifies the Hermes profile that produced the proposal.
+5. The complete proposal is sent through `sendRichMessage`. Long content is divided among messages in the same topic.
+6. **Approve** calls Hermes `apply_skill_pending()` directly.
+7. **Reject** removes the pending proposal directly.
+8. The content messages remain in Telegram after either decision.
+9. The plugin removes the buttons, posts the final status, renames the topic, and writes a local review ledger.
 
 No LLM request occurs during delivery, approval, rejection, or status updates.
 
@@ -56,6 +57,7 @@ With `include_foreground: false`, only records whose origin is `background_revie
 A proposal topic contains:
 
 - one or more numbered content messages;
+- the originating Hermes profile in every content-message header and topic title;
 - one control message with **Approve** and **Reject** buttons;
 - one final status message after a decision.
 

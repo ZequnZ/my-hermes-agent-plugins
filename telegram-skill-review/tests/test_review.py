@@ -111,12 +111,14 @@ def test_pending_listing_ignores_invalid_record_names(tmp_path):
 
 def test_render_messages_keeps_skill_content_after_status_updates():
     record = pending_record("# Demo\n\n" + ("body\n" * 100))
+    record["profile"] = "dgme"
 
     messages = plugin.render_proposal_messages(record, max_chars=180)
 
     assert "".join(message.source for message in messages) == record["payload"]["content"]
     assert all(len(message.markdown) <= 180 for message in messages)
     assert all("Part" in message.markdown for message in messages)
+    assert all("**Profile:** `dgme`" in message.markdown for message in messages)
 
 
 class FakeBot:
@@ -176,6 +178,7 @@ def test_delivery_creates_one_topic_and_keeps_all_skill_parts(tmp_path):
         store=store,
         chat_id="17",
         max_message_chars=180,
+        profile_name="dgme",
     )
 
     asyncio.run(service.deliver_pending("abcd1234"))
@@ -186,6 +189,9 @@ def test_delivery_creates_one_topic_and_keeps_all_skill_parts(tmp_path):
     assert record["review"]["control_message_id"]
     rich_calls = [call for call in bot.calls if call[0] == "sendRichMessage"]
     assert all(call[1]["message_thread_id"] == 29 for call in rich_calls)
+    assert "dgme" in bot.calls[0][1]["name"]
+    assert "**Profile:** `dgme`" in rich_calls[0][1]["rich_message"]["markdown"]
+    assert store.get_pending("abcd1234")["profile"] == "dgme"
 
 
 def test_delivery_leaves_foreground_records_available_for_manual_review(tmp_path):
